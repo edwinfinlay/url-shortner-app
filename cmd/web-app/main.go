@@ -1,26 +1,32 @@
 package main
 
 import (
-	"html/template"
+	"database/sql"
+	"github.com/edwinfinlay/url-shortner-app/internal/controllers"
+	"github.com/edwinfinlay/url-shortner-app/internal/db"
+	_ "github.com/mattn/go-sqlite3"
 	"log"
 	"net/http"
 )
 
 func main() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", ShowHomePage)
-	log.Fatal(http.ListenAndServe(":8080", nil))
-}
+	slite, err := sql.Open("sqlite3", "db.sqlite")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer slite.Close()
 
-func ShowHomePage(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.ParseFiles("internal/views/index.html")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	if err = db.CreateTable(slite); err != nil {
+		log.Fatal(err)
 	}
-	err = tmpl.Execute(w, nil)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+
+	http.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/" {
+			controllers.ShowIndex(writer, request)
+		} else {
+			controllers.Proxy(slite)(writer, request)
+		}
+	})
+	http.HandleFunc("/shorten", controllers.Shorten(slite))
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
